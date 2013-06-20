@@ -23,12 +23,24 @@ class MyServer(BaseHTTPServer.HTTPServer):
         self.conn = conn
 
 
+def substitute(result, groups):
+    """
+    >>> substitute(Result("ab$2", "cd$3fg", "po$2tr", "$1", "$0", "test$3", "he$2l$3lo"), ["a", "b", "c", "d"])
+    Result(verb='ab$2', path_regex='cd$3fg', bus_name='poctr', object_path='b', interface='a', method='testd', args='hecldlo')
+    """
+    full_method = list(result)
+    for n, group in reversed(zip(count(), groups)):
+        for j in range(2, 7):
+            full_method[j] = full_method[j].replace('$%i' % n, group)
+    return Result(*full_method)
+
+
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def get_method(self, verb, path):
         for i in self.server.config:
             m = re.match(i.path_regex, self.path)
             if m and i.verb == verb:
-                return (i, m.groups())
+                return (substitute(i, m.groups()), m.groups())
         raise LookupError()
 
     def respond(self, verb):
@@ -82,18 +94,20 @@ GET /hello/test/(.*)    org.freedesktop.Notifications   /org/freedesktop/Notific
 """
 
 
+Result = namedtuple('Result', 'verb path_regex bus_name ' +
+                              'object_path interface method args')
+
+
 def parse_config(config):
     """
     >>> list(parse_config(StringIO(test_config)))
     [Result(verb='GET', path_regex='/hello/test/(.*)', bus_name='org.freedesktop.Notifications', object_path='/org/freedesktop/Notifications', interface='org.freedesktop.Notifications', method='Notify', args='"", 0, "", "", "", [], {}, 0')]
     """
-    r = re.compile(r'([A-Z]+)\s+(\S+)\s+([A-Za-z\.]+)\s+([[a-zA-Z/]+)\s+' +
-                   r'([a-zA-Z\.]+)\.([a-zA-Z]+)\s+\((.*)\)')
+    r = re.compile(r'([A-Z]+)\s+(\S+)\s+(\S+)\s+(\S+)\s+' +
+                   r'(\S+)\.([\S]+)\s+\((.*)\)')
     for (line_no, line) in izip(count(), iter(config)):
         match = r.match(line)
         if match:
-            Result = namedtuple('Result', 'verb path_regex bus_name ' +
-                                          'object_path interface method args')
             yield Result(*match.groups())
         elif line.strip() == '' or line.strip()[0] == '#':
             # A comment or blank line
