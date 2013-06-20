@@ -1,0 +1,123 @@
+#!/usr/bin/env python
+
+import sys
+import SimpleHTTPServer
+import BaseHTTPServer
+import re
+import time
+import argparse
+import json
+from itertools import izip, count
+from collections import namedtuple
+from cStringIO import StringIO
+import dbus
+import xml.etree.cElementTree as etree
+
+HOST_NAME = '0.0.0.0'
+
+
+class MyServer(BaseHTTPServer.HTTPServer):
+    def __init__(self, server_address, config, conn):
+        BaseHTTPServer.HTTPServer.__init__(self, server_address, MyHandler)
+        self.config = config
+        self.conn = conn
+
+
+class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def get_method(self, verb, path):
+        for i in self.server.config:
+            m = re.match(i.path_regex, self.path)
+            if m and i.verb == verb:
+                return (i, m.groups())
+        raise LookupError()
+
+    def respond(self, verb):
+        try:
+            m, u = self.get_method(verb, self.path)
+            #request = json.load(self.rfile)
+            c = self.server.conn
+            introspect_data = c.call_blocking(m.bus_name, m.object_path, 'org.freedesktop.DBus.Introspectable', 'Introspect', '', '')
+            xpath = './interface[@name=\'%s\']/method[@name=\'%s\']/arg[@direction=\'in\'][@type]' % (m.interface, m.method)
+            signiture = ''.join([x.get('type') for x in etree.fromstring(introspect_data).findall(xpath)])
+
+            input_data = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+            if input_data != "":
+                j = json.loads(input_data)
+            else:
+                j = None
+            reply = c.call_blocking(*m[2:6], signature=signiture, args=eval('(%s, )' % m.args))
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(reply))
+        except LookupError:
+            self.send_response(404)
+            self.end_headers()
+            return
+        except dbus.DBusException as e:
+            self.send_response(400)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(e.message)
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+
+    def do_GET(self):
+        self.respond('GET')
+
+    def do_POST(self):
+        self.respond('POST')
+
+    def do_DELETE(self):
+        self.respond('DELETE')
+
+    def do_PUT(self):
+        self.respond('PUT')
+
+test_config = """
+GET /hello/test/(.*)    org.freedesktop.Notifications   /org/freedesktop/Notifications  org.freedesktop.Notifications.Notify ("", 0, "", "", "", [], {}, 0)
+"""
+
+
+def parse_config(config):
+    """
+    >>> list(parse_config(StringIO(test_config)))
+    [Result(verb='GET', path_regex='/hello/test/(.*)', bus_name='org.freedesktop.Notifications', object_path='/org/freedesktop/Notifications', interface='org.freedesktop.Notifications', method='Notify', args='"", 0, "", "", "", [], {}, 0')]
+    """
+    r = re.compile(r'([A-Z]+)\s+(\S+)\s+([A-Za-z\.]+)\s+([[a-zA-Z/]+)\s+' +
+                   r'([a-zA-Z\.]+)\.([a-zA-Z]+)\s+\((.*)\)')
+    for (line_no, line) in izip(count(), iter(config)):
+        match = r.match(line)
+        if match:
+            Result = namedtuple('Result', 'verb path_regex bus_name ' +
+                                          'object_path interface method args')
+            yield Result(*match.groups())
+        elif line.strip() == '' or line.strip()[0] == '#':
+            # A comment or blank line
+            pass
+        else:
+            sys.stderr.write("Error parsing config file: Could not understand "
+                             + "line %i: %s\n" % (line_no, line))
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Make DBus calls based upon HTTP requests")
+    parser.add_argument('--port', type=int, default=8080)
+    parser.add_argument('--config', type=argparse.FileType('r'), default="config.cfg")
+    args = parser.parse_args(argv[1:])
+
+    cfg = parse_config(args.config)
+    httpd = MyServer((HOST_NAME, args.port), list(cfg), dbus.SessionBus())
+    print time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, args.port)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    httpd.server_close()
+    print time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, args.port)
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
