@@ -57,7 +57,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 j = json.loads(input_data)
             else:
                 j = None
-            reply = c.call_blocking(*m[2:6], signature=signiture, args=eval('(%s, )' % m.args))
+            reply = c.call_blocking(*m[2:6], signature=signiture, args=eval('tuple([%s])' % m.args))
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
