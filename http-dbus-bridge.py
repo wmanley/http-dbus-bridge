@@ -62,6 +62,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(reply))
+            self.wfile.write('\n')
         except LookupError:
             self.send_response(404)
             self.end_headers()
