@@ -7,5 +7,8 @@
         <method name="return_zero">
             <arg direction="out" type="i"/>
         </method>
+        <property name="prop_i" type="i" access="readwrite" />
+        <property name="prop_u" type="u" access="readwrite" />
+        <property name="prop_b" type="b" access="readwrite" />
     </interface>
 </node>

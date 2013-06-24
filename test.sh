@@ -15,7 +15,9 @@ setup() {
 	echo $! > pids/test-service
 
 	cat <<-EOF > config.cfg
-		GET /example/(.+) com.example.service /com/example/service com.example.service.\$1 ()
+		GET /example/([A-Za-z0-9_-]+)$ com.example.service /com/example/service com.example.service.\$1 ()
+		GET /example/props$ com.example.service /com/example/service  org.freedesktop.DBus.Properties.GetAll ("com.example.service")
+		GET /example/props/(.+)$ com.example.service /com/example/service  org.freedesktop.DBus.Properties.Get ("com.example.service", "\$1")
 		EOF
 	cp $srcdir/interface-com.example.service.xml .
 }
@@ -69,6 +71,16 @@ test_success_if_static_introspection_xml_is_not_available_but_introspection_enab
 test_success_if_static_introspection_xml_is_available() {
 	launch_bridge
 	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "200" || fail ""
+}
+
+test_getting_property() {
+	launch_bridge --allow-introspection=true
+	[ "$(curl http://$address/example/props/prop_i 2>/dev/null)" = "1" ] ||
+		fail "int property not correctly formatted"
+	[ "$(curl http://$address/example/props/prop_u 2>/dev/null)" = "1" ] ||
+		fail "uint property not correctly formatted"
+	[ "$(curl http://$address/example/props/prop_b 2>/dev/null)" = "true" ] ||
+		fail "bool property not correctly formatted"
 }
 
 failures=0
