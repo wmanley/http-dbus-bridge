@@ -64,15 +64,19 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(reply))
             self.wfile.write('\n')
-        except LookupError:
-            self.send_response(404)
-            self.end_headers()
-            return
+        except LookupError as e:
+            self.respond_exception(404, e)
         except dbus.DBusException as e:
-            self.send_response(400)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(e.message)
+            self.respond_exception(400, e)
+        except Exception as e:
+            self.respond_exception(500, e)
+
+    def respond_exception(self, code, exception):
+        sys.stderr.write("WARNING: exception thrown: %s\n" % str(exception))
+        self.send_response(code)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        json.dump(exception.message, self.wfile)
 
     def do_HEAD(self):
         self.send_response(200)
