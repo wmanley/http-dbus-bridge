@@ -47,6 +47,12 @@ test_that_we_receive_404_on_unknown_path() {
 	curl -D /dev/stdout http://$address/unknown 2>/dev/null | grep -q "404" || fail ""
 }
 
+test_that_dbus_call_is_made_in_response_to_http_get() {
+	launch_bridge
+	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "200" || fail ""
+	grep -q 'print0 called' "test-service.log" || fail "No method call made"
+}
+
 failures=0
 tests=${*:-$(declare -F | awk '/ test_/ {print $3}')}
 for t in $tests; do
