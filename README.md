@@ -27,7 +27,7 @@ JSON:
 
     $ ./http-dbus-bridge.py --port 8081 &
     $ curl 'http://localhost:8081/shell' 2>/dev/null
-    {"OverviewActive": 0, "ShellVersion": "3.4.2", "ApiVersion": 1}
+    {"OverviewActive": false, "ShellVersion": "3.4.2", "ApiVersion": 1}
 
 With this retrieving a single one of these properties:
 

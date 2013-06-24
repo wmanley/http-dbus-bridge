@@ -36,6 +36,14 @@ def substitute(result, groups):
     return Result(*full_method)
 
 
+class DBusJSONEncoder(json.JSONEncoder):
+    def encode(self, obj):
+        if isinstance(obj, dbus.Boolean):
+            return 'true' if obj else 'false'
+        else:
+            return json.JSONEncoder.encode(self, obj)
+
+
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def get_method(self, verb, path):
         for i in self.server.config:
@@ -72,7 +80,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps(reply))
+            self.wfile.write(json.dumps(reply, cls=DBusJSONEncoder))
             self.wfile.write('\n')
         except LookupError as e:
             self.respond_exception(404, e)
@@ -86,7 +94,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-type", "application/json")
         self.end_headers()
-        json.dump(exception.message, self.wfile)
+        json.dump(exception.message, self.wfile, cls=DBusJSONEncoder)
 
     def do_HEAD(self):
         self.send_response(200)
