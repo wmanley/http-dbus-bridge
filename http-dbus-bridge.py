@@ -17,10 +17,11 @@ HOST_NAME = '0.0.0.0'
 
 
 class MyServer(BaseHTTPServer.HTTPServer):
-    def __init__(self, server_address, config, conn):
+    def __init__(self, server_address, config, conn, allow_introspection):
         BaseHTTPServer.HTTPServer.__init__(self, server_address, MyHandler)
         self.config = config
         self.conn = conn
+        self.allow_introspection = allow_introspection
 
 
 def substitute(result, groups):
@@ -49,9 +50,18 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             m, u = self.get_method(verb, self.path)
             #request = json.load(self.rfile)
             c = self.server.conn
-            introspect_data = c.call_blocking(m.bus_name, m.object_path, 'org.freedesktop.DBus.Introspectable', 'Introspect', '', '')
+            try:
+                introspect_file = open('interface-%s.xml' % m.interface, 'r')
+            except IOError as e:
+                if self.server.allow_introspection:
+                    introspect_file = StringIO(c.call_blocking(m.bus_name,
+                        m.object_path, 'org.freedesktop.DBus.Introspectable',
+                        'Introspect', '', ''))
+                else:
+                    raise LookupError('Unknown DBus interface \'%s\''
+                                      % m.interface)
             xpath = './interface[@name=\'%s\']/method[@name=\'%s\']/arg[@direction=\'in\'][@type]' % (m.interface, m.method)
-            signiture = ''.join([x.get('type') for x in etree.fromstring(introspect_data).findall(xpath)])
+            signiture = ''.join([x.get('type') for x in etree.parse(introspect_file).findall(xpath)])
 
             input_data = self.rfile.read(int(self.headers.get('Content-Length', 0)))
             if input_data != "":
@@ -127,10 +137,12 @@ def main(argv):
     parser = argparse.ArgumentParser(description="Make DBus calls based upon HTTP requests")
     parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--config', type=argparse.FileType('r'), default="config.cfg")
+    parser.add_argument('--allow-introspection', type=bool, default=False)
     args = parser.parse_args(argv[1:])
 
     cfg = parse_config(args.config)
-    httpd = MyServer((HOST_NAME, args.port), list(cfg), dbus.SessionBus())
+    httpd = MyServer((HOST_NAME, args.port), list(cfg), dbus.SessionBus(),
+                     args.allow_introspection)
     print time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, args.port)
     try:
         httpd.serve_forever()

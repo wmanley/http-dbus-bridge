@@ -1,0 +1,11 @@
+<node>
+    <interface name="com.example.service">
+        <method name="print0"/>
+        <method name="print_string">
+            <arg direction="in" type="s"/>
+        </method>
+        <method name="return_zero">
+            <arg direction="out" type="i"/>
+        </method>
+    </interface>
+</node>

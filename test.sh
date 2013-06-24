@@ -17,6 +17,7 @@ setup() {
 	cat <<-EOF > config.cfg
 		GET /example/(.+) com.example.service /com/example/service com.example.service.\$1 ()
 		EOF
+	cp $srcdir/interface-com.example.service.xml .
 }
 
 launch_bridge() {
@@ -51,6 +52,23 @@ test_that_dbus_call_is_made_in_response_to_http_get() {
 	launch_bridge
 	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "200" || fail ""
 	grep -q 'print0 called' "test-service.log" || fail "No method call made"
+}
+
+test_that_we_receive_404_if_static_introspection_xml_is_not_available() {
+	rm interface-com.example.service.xml
+	launch_bridge
+	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "404" || fail ""
+}
+
+test_success_if_static_introspection_xml_is_not_available_but_introspection_enabled() {
+	rm interface-com.example.service.xml
+	launch_bridge --allow-introspection=true
+	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "200" || fail ""
+}
+
+test_success_if_static_introspection_xml_is_available() {
+	launch_bridge
+	curl -D /dev/stdout http://$address/example/print0 2>/dev/null | grep -q "200" || fail ""
 }
 
 failures=0
