@@ -40,7 +40,8 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for i in self.server.config:
             m = re.match(i.path_regex, self.path)
             if m and i.verb == verb:
-                return (substitute(i, m.groups()), m.groups())
+                substvars = [self.path] + list(m.groups())
+                return (substitute(i, substvars), substvars)
         raise LookupError()
 
     def respond(self, verb):
