@@ -105,7 +105,7 @@ def parse_config(config):
     >>> list(parse_config(StringIO(test_config)))
     [Result(verb='GET', path_regex='/hello/test/(.*)', bus_name='org.freedesktop.Notifications', object_path='/org/freedesktop/Notifications', interface='org.freedesktop.Notifications', method='Notify', args='"", 0, "", "", "", [], {}, 0')]
     """
-    r = re.compile(r'([A-Z]+)\s+(\S+)\s+(\S+)\s+(\S+)\s+' +
+    r = re.compile(r'\s*([A-Z]+)\s+(\S+)\s+(\S+)\s+(\S+)\s+' +
                    r'(\S+)\.([\S]+)\s+\((.*)\)')
     for (line_no, line) in izip(count(), iter(config)):
         match = r.match(line)
