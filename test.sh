@@ -16,10 +16,8 @@ setup() {
 
 	cat <<-EOF > config.cfg
 		GET /example/([A-Za-z0-9_-]+)$ com.example.service /com/example/service com.example.service.\$1 ()
-		GET /example/props$ com.example.service /com/example/service  org.freedesktop.DBus.Properties.GetAll ("com.example.service")
-		GET /example/props/(.+)$ com.example.service /com/example/service  org.freedesktop.DBus.Properties.Get ("com.example.service", "\$1")
 		EOF
-	cp $srcdir/interface-com.example.service.xml .
+	cp $srcdir/interface-com.example.service.xml $srcdir/http-dbus-object-mapping.cfg .
 }
 
 launch_bridge() {
@@ -81,6 +79,16 @@ test_getting_property() {
 		fail "uint property not correctly formatted"
 	[ "$(curl http://$address/example/props/prop_b 2>/dev/null)" = "true" ] ||
 		fail "bool property not correctly formatted"
+}
+
+test_setting_property() {
+	launch_bridge --allow-introspection=true
+	curl -fsS -X PUT --data 1 "http://$address/example/props/prop_i" ||
+		fail "Failed to set int property"
+	curl -fsS -X PUT --data 1 "http://$address/example/props/prop_u" ||
+		fail "Failed to set uint property"
+	curl -fsS -X PUT --data true "http://$address/example/props/prop_b" ||
+		fail "Failed to set boolean property"
 }
 
 failures=0

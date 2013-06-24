@@ -17,11 +17,12 @@ HOST_NAME = '0.0.0.0'
 
 
 class MyServer(BaseHTTPServer.HTTPServer):
-    def __init__(self, server_address, config, conn, allow_introspection):
+    def __init__(self, server_address, config, conn, allow_introspection, object_mapping):
         BaseHTTPServer.HTTPServer.__init__(self, server_address, MyHandler)
         self.config = config
         self.conn = conn
         self.allow_introspection = allow_introspection
+        self.object_mapping = object_mapping
 
 
 def substitute(result, groups):
@@ -43,6 +44,21 @@ class DBusJSONEncoder(json.JSONEncoder):
         else:
             return json.JSONEncoder.encode(self, obj)
 
+dbus_types = {
+    'b': dbus.Boolean,
+    'y': dbus.Byte,
+    'n': dbus.Int16,
+    'i': dbus.Int32,
+    'x': dbus.Int64,
+    'q': dbus.UInt16,
+    'u': dbus.UInt32,
+    't': dbus.UInt64,
+    'd': dbus.Double,
+    'o': dbus.ObjectPath,
+    'g': dbus.Signature,
+    's': dbus.String
+}
+
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def introspect_interface(self, interface, bus_name, object_path):
@@ -60,6 +76,38 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                   % interface)
         xpath = './interface[@name=\'%s\']' % interface
         return etree.parse(introspect_file).find(xpath)
+
+    def get_mapping(self, path):
+        for i in self.server.object_mapping:
+            if self.path.startswith(i.http_path):
+                return i
+        return None
+
+    def respond_properties(self, verb, m, json_in):
+        c = self.server.conn
+        xml = self.introspect_interface(m.interface, m.bus_name, m.object_path)
+        all_properties = xml.findall('property')
+        prop_names = [x.get('name') for x in all_properties]
+        p = self.path.rstrip('/')
+        if verb == 'GET' and p == m.http_path:
+            return c.call_blocking(m.bus_name, m.object_path,
+                                   'org.freedesktop.DBus.Properties', 'GetAll',
+                                   's', (m.interface))
+        base, prop = p.rsplit('/', 1)
+        # Restrict based upon properties listed in XML for security
+        if base == m.http_path and prop in prop_names:
+            if verb == 'GET':
+                return c.call_blocking(m.bus_name, m.object_path,
+                                       'org.freedesktop.DBus.Properties',
+                                       'Get', 'ss', (m.interface, prop))
+            elif verb == 'PUT':
+                t = xml.find('property[@name=\'%s\']' % prop).get('type')
+                # TODO: FIXME for complex types:
+                v = dbus_types[t](json_in, variant_level=1)
+                return c.call_blocking(m.bus_name, m.object_path,
+                                       'org.freedesktop.DBus.Properties',
+                                       'Set', 'ssv', (m.interface, prop, v))
+        raise LookupError('Unknown path \'%s\'' % self.path)
 
     def get_method(self, verb, path):
         for i in self.server.config:
@@ -86,8 +134,11 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 json_in = None
 
             m, u = self.get_method(verb, self.path)
+            mapping = self.get_mapping(self.path)
             if m is not None:
                 reply = self.respond_commands(m, u, json_in)
+            elif mapping is not None:
+                reply = self.respond_properties(verb, mapping, json_in)
             else:
                 raise LookupError('Unknown path \'%s\'' % self.path)
             self.send_response(200)
@@ -133,6 +184,8 @@ GET /hello/test/(.*)    org.freedesktop.Notifications   /org/freedesktop/Notific
 
 Result = namedtuple('Result', 'verb path_regex bus_name ' +
                               'object_path interface method args')
+PathMapping = namedtuple('PathMapping', 'http_path bus_name object_path ' +
+                                        'interface type')
 
 
 def parse_config(config):
@@ -154,6 +207,22 @@ def parse_config(config):
                              + "line %i: %s\n" % (line_no, line))
 
 
+def parse_path_mapping(config):
+    """
+    >>> list(parse_path_mapping(StringIO("/my/path My.Bus.Name /my/object/path my.interface.name Properties")))
+    [PathMapping(http_path='/my/path', bus_name='My.Bus.Name', object_path='/my/object/path', interface='my.interface.name', type='Properties')]
+    """
+    for (line_no, line) in izip(count(), iter(config)):
+        if line.strip() == '' or line.strip()[0] == '#':
+            # A comment or blank line
+            pass
+        elif len(line.split()) == 5:
+            yield PathMapping(*line.split())
+        else:
+            sys.stderr.write("Error parsing config file: Could not understand "
+                             + "line %i: %s\n" % (line_no, line))
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Make DBus calls based upon HTTP requests")
     parser.add_argument('--port', type=int, default=8080)
@@ -162,8 +231,9 @@ def main(argv):
     args = parser.parse_args(argv[1:])
 
     cfg = parse_config(args.config)
+    object_mapping = list(parse_path_mapping(open("http-dbus-object-mapping.cfg", 'r')))
     httpd = MyServer((HOST_NAME, args.port), list(cfg), dbus.SessionBus(),
-                     args.allow_introspection)
+                     args.allow_introspection, object_mapping)
     print time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, args.port)
     try:
         httpd.serve_forever()

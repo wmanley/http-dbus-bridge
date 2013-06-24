@@ -50,6 +50,19 @@ class TestService(dbus.service.Object):
                 'The Foo object does not implement the %s interface'
                     % interface_name)
 
+    @dbus.service.method(dbus.PROPERTIES_IFACE,
+                         in_signature='ssv')
+    def Set(self, interface_name, property_name, new_value):
+        if type(self.Get(interface_name, property_name)) != type(new_value):
+            raise dbus.exceptions.ValidationException(
+                'Incorrect type in set \'%s\'.  Expected \'%s\'.' % (
+                    str(type(self.Get(interface_name, property_name))),
+                    str(type(new_value))))
+
+        # validate the property name and value, update internal state...
+        self.PropertiesChanged(interface_name,
+            { property_name: new_value }, [])
+
     @dbus.service.signal(dbus.PROPERTIES_IFACE,
                          signature='sa{sv}as')
     def PropertiesChanged(self, interface_name, changed_properties,
