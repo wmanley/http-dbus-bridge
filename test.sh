@@ -13,6 +13,9 @@ setup() {
 
 	$srcdir/test-service.py > test-service.log &
 	echo $! > pids/test-service
+	while ! dbus-send --print-reply --dest=org.freedesktop.DBus / org.freedesktop.DBus.NameHasOwner string:com.example.service | grep -q true; do
+		sleep 0.01
+	done
 
 	cat <<-EOF > config.cfg
 		GET /example/([A-Za-z0-9_-]+)$ com.example.service /com/example/service com.example.service.\$1 ()
@@ -21,18 +24,13 @@ setup() {
 }
 
 launch_bridge() {
-	# FIXME: This is not a robust way of selecting a port that is not in use.
-	# Use systemd-style activation.
-	port=$(expr $RANDOM + 1024)
-	$srcdir/http-dbus-bridge.py --port "$port" "$@" &
-	echo $! > "$scratch_dir/pids/bridge"
-	address="localhost:$port"
-
-	# TODO: Robustly wait until everything's setup
-	sleep 1
+	export $($srcdir/sd-launch.py --stdout "$scratch_dir/bridge.log" -- $srcdir/http-dbus-bridge.py "$@")
+	echo $LAUNCHED_PID > "$scratch_dir/pids/bridge"
+	address="localhost:$LAUNCHED_PORT"
 }
 
 teardown() {
+	cat $scratch_dir/bridge.log
 	kill $(cat $scratch_dir/pids/*) &>/dev/null
 	cd "$srcdir"
 	rm -Rf "$scratch_dir"
