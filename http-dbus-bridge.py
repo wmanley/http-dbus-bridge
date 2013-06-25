@@ -5,8 +5,10 @@ import SimpleHTTPServer
 import BaseHTTPServer
 import re
 import time
+import os
 import argparse
 import json
+import socket
 from itertools import izip, count
 from collections import namedtuple
 from cStringIO import StringIO
@@ -17,8 +19,10 @@ HOST_NAME = '0.0.0.0'
 
 
 class MyServer(BaseHTTPServer.HTTPServer):
-    def __init__(self, server_address, config, conn, allow_introspection, object_mapping):
-        BaseHTTPServer.HTTPServer.__init__(self, server_address, MyHandler)
+    def __init__(self, server_address, config, conn, allow_introspection,
+                 object_mapping, bind_and_activate=True):
+        BaseHTTPServer.HTTPServer.__init__(self, server_address, MyHandler,
+                                           bind_and_activate=bind_and_activate)
         self.config = config
         self.conn = conn
         self.allow_introspection = allow_introspection
@@ -225,15 +229,23 @@ def parse_path_mapping(config):
 
 def main(argv):
     parser = argparse.ArgumentParser(description="Make DBus calls based upon HTTP requests")
-    parser.add_argument('--port', type=int, default=8080)
+    parser.add_argument('--port', type=int)
     parser.add_argument('--config', type=argparse.FileType('r'), default="config.cfg")
     parser.add_argument('--allow-introspection', type=bool, default=False)
     args = parser.parse_args(argv[1:])
 
     cfg = parse_config(args.config)
     object_mapping = list(parse_path_mapping(open("http-dbus-object-mapping.cfg", 'r')))
-    httpd = MyServer((HOST_NAME, args.port), list(cfg), dbus.SessionBus(),
-                     args.allow_introspection, object_mapping)
+    httpd = MyServer((HOST_NAME, args.port or 8080), list(cfg),
+                     dbus.SessionBus(), args.allow_introspection,
+                     object_mapping, bind_and_activate=False)
+    if args.port is None and os.environ.get('LISTEN_PID', None) == str(os.getpid()):
+        assert os.environ['LISTEN_FDS'] == '1'
+        httpd.socket = socket.fromfd(3, httpd.address_family, httpd.socket_type)
+    else:
+        httpd.server_bind()
+    httpd.server_activate()
+
     print time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, args.port)
     try:
         httpd.serve_forever()
