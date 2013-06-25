@@ -31,8 +31,10 @@ class MyServer(BaseHTTPServer.HTTPServer):
 
 def substitute(result, groups):
     """
-    >>> substitute(Result("ab$2", "cd$3fg", "po$2tr", "$1", "$0", "test$3", "he$2l$3lo"), ["a", "b", "c", "d"])
-    Result(verb='ab$2', path_regex='cd$3fg', bus_name='poctr', object_path='b', interface='a', method='testd', args='hecldlo')
+    >>> substitute(Result("ab$2", "cd$3fg", "po$2tr", "$1", "$0", "test$3",
+    ...                   "he$2l$3lo"), ["a", "b", "c", "d"])
+    Result(verb='ab$2', path_regex='cd$3fg', bus_name='poctr', object_path='b',
+           interface='a', method='testd', args='hecldlo')
     """
     full_method = list(result)
     for n, group in reversed(zip(count(), groups)):
@@ -71,9 +73,10 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             introspect_file = open('interface-%s.xml' % interface, 'r')
         except IOError as e:
             if self.server.allow_introspection:
-                introspect_xml = c.call_blocking(bus_name, object_path,
-                                                 'org.freedesktop.DBus.Introspectable',
-                                                 'Introspect', '', '')
+                introspect_xml = c.call_blocking(
+                    bus_name, object_path,
+                    'org.freedesktop.DBus.Introspectable',
+                    'Introspect', '', '')
                 introspect_file = StringIO(introspect_xml)
             else:
                 raise LookupError('Unknown DBus interface \'%s\''
@@ -122,16 +125,19 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return (None, None)
 
     def respond_commands(self, m, u, j):
-        xml = self.introspect_interface(m.interface, m.bus_name, m.object_path)
-        args = xml.findall('method[@name=\'%s\']/arg[@direction=\'in\']' % m.method)
+        xml = self.introspect_interface(m.interface, m.bus_name,
+                                        m.object_path)
+        args = xml.findall(
+            'method[@name=\'%s\']/arg[@direction=\'in\']' % m.method)
         signiture = ''.join([x.get('type') for x in args])
 
-        return self.server.conn.call_blocking(*m[2:6], signature=signiture,
-                                              args=eval('tuple([%s])' % m.args))
+        return self.server.conn.call_blocking(
+            *m[2:6], signature=signiture, args=eval('tuple([%s])' % m.args))
 
     def respond(self, verb):
         try:
-            input_data = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+            input_data = self.rfile.read(int(
+                self.headers.get('Content-Length', 0)))
             if input_data != "":
                 json_in = json.loads(input_data)
             else:
@@ -181,11 +187,6 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_PUT(self):
         self.respond('PUT')
 
-test_config = """
-GET /hello/test/(.*)    org.freedesktop.Notifications   /org/freedesktop/Notifications  org.freedesktop.Notifications.Notify ("", 0, "", "", "", [], {}, 0)
-"""
-
-
 Result = namedtuple('Result', 'verb path_regex bus_name ' +
                               'object_path interface method args')
 PathMapping = namedtuple('PathMapping', 'http_path bus_name object_path ' +
@@ -194,8 +195,16 @@ PathMapping = namedtuple('PathMapping', 'http_path bus_name object_path ' +
 
 def parse_config(config):
     """
-    >>> list(parse_config(StringIO(test_config)))
-    [Result(verb='GET', path_regex='/hello/test/(.*)', bus_name='org.freedesktop.Notifications', object_path='/org/freedesktop/Notifications', interface='org.freedesktop.Notifications', method='Notify', args='"", 0, "", "", "", [], {}, 0')]
+    >>> list(parse_config(StringIO(
+    ...     'GET /hello/test/(.*)    org.freedesktop.Notifications   ' +
+    ...     '/org/freedesktop/Notifications  ' +
+    ...     'org.freedesktop.Notifications.Notify ' +
+    ...     '("", 0, "", "", "", [], {}, 0)')))
+    [Result(verb='GET', path_regex='/hello/test/(.*)',
+            bus_name='org.freedesktop.Notifications',
+            object_path='/org/freedesktop/Notifications',
+            interface='org.freedesktop.Notifications', method='Notify',
+            args='"", 0, "", "", "", [], {}, 0')]
     """
     r = re.compile(r'\s*([A-Z]+)\s+(\S+)\s+(\S+)\s+(\S+)\s+' +
                    r'(\S+)\.([\S]+)\s+\((.*)\)')
@@ -207,14 +216,18 @@ def parse_config(config):
             # A comment or blank line
             pass
         else:
-            sys.stderr.write("Error parsing config file: Could not understand "
-                             + "line %i: %s\n" % (line_no, line))
+            sys.stderr.write("Error parsing config file: Could not " +
+                             "understand line %i: %s\n" % (line_no, line))
 
 
 def parse_path_mapping(config):
     """
-    >>> list(parse_path_mapping(StringIO("/my/path My.Bus.Name /my/object/path my.interface.name Properties")))
-    [PathMapping(http_path='/my/path', bus_name='My.Bus.Name', object_path='/my/object/path', interface='my.interface.name', type='Properties')]
+    >>> list(parse_path_mapping(StringIO(
+    ...     "/my/path My.Bus.Name /my/object/path my.interface.name " +
+    ...     "Properties")))
+    [PathMapping(http_path='/my/path', bus_name='My.Bus.Name',
+                 object_path='/my/object/path', interface='my.interface.name',
+                 type='Properties')]
     """
     for (line_no, line) in izip(count(), iter(config)):
         if line.strip() == '' or line.strip()[0] == '#':
@@ -223,25 +236,30 @@ def parse_path_mapping(config):
         elif len(line.split()) == 5:
             yield PathMapping(*line.split())
         else:
-            sys.stderr.write("Error parsing config file: Could not understand "
-                             + "line %i: %s\n" % (line_no, line))
+            sys.stderr.write("Error parsing config file: Could not " +
+                             "understand line %i: %s\n" % (line_no, line))
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(description="Make DBus calls based upon HTTP requests")
+    parser = argparse.ArgumentParser(
+        description="Make DBus calls based upon HTTP requests")
     parser.add_argument('--port', type=int)
-    parser.add_argument('--config', type=argparse.FileType('r'), default="config.cfg")
+    parser.add_argument('--config', type=argparse.FileType('r'),
+                        default="config.cfg")
     parser.add_argument('--allow-introspection', type=bool, default=False)
     args = parser.parse_args(argv[1:])
 
     cfg = parse_config(args.config)
-    object_mapping = list(parse_path_mapping(open("http-dbus-object-mapping.cfg", 'r')))
+    object_mapping = list(
+        parse_path_mapping(open("http-dbus-object-mapping.cfg", 'r')))
     httpd = MyServer((HOST_NAME, args.port or 8080), list(cfg),
                      dbus.SessionBus(), args.allow_introspection,
                      object_mapping, bind_and_activate=False)
-    if args.port is None and os.environ.get('LISTEN_PID', None) == str(os.getpid()):
+    if (args.port is None and
+            os.environ.get('LISTEN_PID', None) == str(os.getpid())):
         assert os.environ['LISTEN_FDS'] == '1'
-        httpd.socket = socket.fromfd(3, httpd.address_family, httpd.socket_type)
+        httpd.socket = socket.fromfd(3, httpd.address_family,
+                                     httpd.socket_type)
     else:
         httpd.server_bind()
     httpd.server_activate()
