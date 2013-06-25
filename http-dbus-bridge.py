@@ -45,38 +45,51 @@ class DBusJSONEncoder(json.JSONEncoder):
 
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def introspect_interface(self, interface, bus_name, object_path):
+        c = self.server.conn
+        try:
+            introspect_file = open('interface-%s.xml' % interface, 'r')
+        except IOError as e:
+            if self.server.allow_introspection:
+                introspect_xml = c.call_blocking(bus_name, object_path,
+                                                 'org.freedesktop.DBus.Introspectable',
+                                                 'Introspect', '', '')
+                introspect_file = StringIO(introspect_xml)
+            else:
+                raise LookupError('Unknown DBus interface \'%s\''
+                                  % interface)
+        xpath = './interface[@name=\'%s\']' % interface
+        return etree.parse(introspect_file).find(xpath)
+
     def get_method(self, verb, path):
         for i in self.server.config:
             m = re.match(i.path_regex, self.path)
             if m and i.verb == verb:
                 substvars = [self.path] + list(m.groups())
                 return (substitute(i, substvars), substvars)
-        raise LookupError()
+        return (None, None)
+
+    def respond_commands(self, m, u, j):
+        xml = self.introspect_interface(m.interface, m.bus_name, m.object_path)
+        args = xml.findall('method[@name=\'%s\']/arg[@direction=\'in\']' % m.method)
+        signiture = ''.join([x.get('type') for x in args])
+
+        return self.server.conn.call_blocking(*m[2:6], signature=signiture,
+                                              args=eval('tuple([%s])' % m.args))
 
     def respond(self, verb):
         try:
-            m, u = self.get_method(verb, self.path)
-            #request = json.load(self.rfile)
-            c = self.server.conn
-            try:
-                introspect_file = open('interface-%s.xml' % m.interface, 'r')
-            except IOError as e:
-                if self.server.allow_introspection:
-                    introspect_file = StringIO(c.call_blocking(m.bus_name,
-                        m.object_path, 'org.freedesktop.DBus.Introspectable',
-                        'Introspect', '', ''))
-                else:
-                    raise LookupError('Unknown DBus interface \'%s\''
-                                      % m.interface)
-            xpath = './interface[@name=\'%s\']/method[@name=\'%s\']/arg[@direction=\'in\'][@type]' % (m.interface, m.method)
-            signiture = ''.join([x.get('type') for x in etree.parse(introspect_file).findall(xpath)])
-
             input_data = self.rfile.read(int(self.headers.get('Content-Length', 0)))
             if input_data != "":
-                j = json.loads(input_data)
+                json_in = json.loads(input_data)
             else:
-                j = None
-            reply = c.call_blocking(*m[2:6], signature=signiture, args=eval('tuple([%s])' % m.args))
+                json_in = None
+
+            m, u = self.get_method(verb, self.path)
+            if m is not None:
+                reply = self.respond_commands(m, u, json_in)
+            else:
+                raise LookupError('Unknown path \'%s\'' % self.path)
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
