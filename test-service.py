@@ -43,7 +43,11 @@ class TestService(dbus.service.Object):
         if interface_name == 'com.example.service':
             return { 'prop_i': dbus.Int32(1, variant_level=1),
                      'prop_u': dbus.UInt32(1, variant_level=1),
-                     'prop_b': dbus.Boolean(True, variant_level=1) }
+                     'prop_b': dbus.Boolean(True, variant_level=1),
+                     'prop_o': dbus.ObjectPath('/com/example/service',
+                                               variant_level=1),
+                     'prop_unknown_o': dbus.ObjectPath('/com/example/unknown',
+                                               variant_level=1)}
         else:
             raise dbus.exceptions.DBusException(
                 'com.example.UnknownInterface',

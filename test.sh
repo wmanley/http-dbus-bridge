@@ -89,6 +89,23 @@ test_setting_property() {
 		fail "Failed to set boolean property"
 }
 
+assert_GET_returns() {
+	path=$1
+	expected=$2
+	data="$(curl -sS http://$address$path)"
+	[ "$expected" = "$data" ] || fail "GET $path: Expected '$expected' but received '$data'"
+}
+
+test_that_object_path_is_mapped_to_http_endpoint() {
+	launch_bridge
+	assert_GET_returns "/example/props/prop_o" "\"/example/props\""
+}
+
+test_that_unknown_object_path_is_mapped_to_json_null() {
+	launch_bridge
+	assert_GET_returns "/example/props/prop_unknown_o" "null"
+}
+
 failures=0
 tests=${*:-$(declare -F | awk '/ test_/ {print $3}')}
 for t in $tests; do

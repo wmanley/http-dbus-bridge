@@ -10,5 +10,7 @@
         <property name="prop_i" type="i" access="readwrite" />
         <property name="prop_u" type="u" access="readwrite" />
         <property name="prop_b" type="b" access="readwrite" />
+        <property name="prop_o" type="o" access="readwrite" />
+        <property name="prop_unknown_o" type="o" access="readwrite" />
     </interface>
 </node>
