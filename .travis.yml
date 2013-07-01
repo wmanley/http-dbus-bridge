@@ -1,0 +1,5 @@
+# This is actually a lie but we don't want travis to setup virtualenv as
+# installing dbus-python is too difficult.
+language: c
+script: make check
+install: sudo apt-get install dbus python-dbus python-gtk2 pep8; sudo pip install nose
