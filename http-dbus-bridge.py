@@ -89,30 +89,30 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return i
         return None
 
-    def respond_properties(self, verb, m, json_in):
+    def respond_properties(self, interface, verb, m, json_in):
         c = self.server.conn
-        xml = self.introspect_interface(m.interface, m.bus_name, m.object_path)
+        xml = self.introspect_interface(interface, m.bus_name, m.object_path)
         all_properties = xml.findall('property')
         prop_names = [x.get('name') for x in all_properties]
         p = self.path.rstrip('/')
         if verb == 'GET' and p == m.http_path:
             return c.call_blocking(m.bus_name, m.object_path,
                                    'org.freedesktop.DBus.Properties', 'GetAll',
-                                   's', (m.interface))
+                                   's', (interface))
         base, prop = p.rsplit('/', 1)
         # Restrict based upon properties listed in XML for security
         if base == m.http_path and prop in prop_names:
             if verb == 'GET':
                 return c.call_blocking(m.bus_name, m.object_path,
                                        'org.freedesktop.DBus.Properties',
-                                       'Get', 'ss', (m.interface, prop))
+                                       'Get', 'ss', (interface, prop))
             elif verb == 'PUT':
                 t = xml.find('property[@name=\'%s\']' % prop).get('type')
                 # TODO: FIXME for complex types:
                 v = dbus_types[t](json_in, variant_level=1)
                 return c.call_blocking(m.bus_name, m.object_path,
                                        'org.freedesktop.DBus.Properties',
-                                       'Set', 'ssv', (m.interface, prop, v))
+                                       'Set', 'ssv', (interface, prop, v))
         raise LookupError('Unknown path \'%s\'' % self.path)
 
     def get_method(self, verb, path):
@@ -147,7 +147,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if m is not None:
                 reply = self.respond_commands(m, u, json_in)
             elif mapping is not None:
-                reply = self.respond_properties(verb, mapping, json_in)
+                reply = mapping.handler(self, verb, mapping, json_in)
             else:
                 raise LookupError('Unknown path \'%s\'' % self.path)
             self.send_response(200)
@@ -186,10 +186,11 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_PUT(self):
         self.respond('PUT')
 
+
 Result = namedtuple('Result', 'verb path_regex bus_name ' +
                               'object_path interface method args')
 PathMapping = namedtuple('PathMapping', 'http_path bus_name object_path ' +
-                                        'interface type')
+                                        'handler')
 
 
 def parse_config(config):
@@ -222,21 +223,29 @@ def parse_config(config):
 def parse_path_mapping(config):
     """
     >>> list(parse_path_mapping(StringIO(
-    ...     "/my/path My.Bus.Name /my/object/path my.interface.name " +
-    ...     "Properties")))
+    ...     '/my/path My.Bus.Name /my/object/path ' +
+    ...     'Properties(interface=my.interface.name)')))
     [PathMapping(http_path='/my/path', bus_name='My.Bus.Name',
-                 object_path='/my/object/path', interface='my.interface.name',
-                 type='Properties')]
+                 object_path='/my/object/path',
+                 handler=<function prop at ...>)]
     """
     for (line_no, line) in izip(count(), iter(config)):
         if line.strip() == '' or line.strip()[0] == '#':
             # A comment or blank line
             pass
-        elif len(line.split()) == 5:
-            yield PathMapping(*line.split())
         else:
-            sys.stderr.write("Error parsing config file: Could not " +
-                             "understand line %i: %s\n" % (line_no, line))
+            try:
+                http_path, bus_name, object_path, handler = line.split(None, 4)
+                interface = \
+                    re.match(r'Properties\(interface=(.*)\)', handler).group(1)
+
+                def prop(handler, verb, m, json):
+                    return handler.respond_properties(interface, verb, m, json)
+                yield PathMapping(http_path, bus_name, object_path, prop)
+            except Exception as e:
+                sys.stderr.write(
+                    "Error parsing config file: %s\n" % e.message +
+                    "When parsing line %i: %s\n" % (line_no, line))
 
 
 def main(argv):
