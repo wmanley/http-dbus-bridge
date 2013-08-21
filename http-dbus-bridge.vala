@@ -101,51 +101,58 @@ List<PathMapping?> parse_config_file(DataInputStream i) throws Error
             properties_regex.match (v[3], 0, out info);
             var interface_name = info.fetch(1);
 
-            uint8[] xml = new uint8[4096];
-            size_t bytes_read;
-            var input = new DataInputStream (File.new_for_path ("interface-" + interface_name + ".xml").read ());
-            if (!input.read_all(xml, out bytes_read)) {
-                stderr.printf("Couldn't load introspection xml\n");
-                continue;
-            }
-            var nodeinfo = new DBusNodeInfo.for_xml((string) xml);
-            var interface_info = nodeinfo.lookup_interface(interface_name);
+            try {
+                uint8[] xml = new uint8[4096];
+                size_t bytes_read;
+                var filename = "interface-" + interface_name + ".xml";
+                var input = new DataInputStream (File.new_for_path (filename).read ());
+                if (!input.read_all(xml, out bytes_read)) {
+                    stderr.printf("Couldn't load introspection xml\n");
+                    continue;
+                }
+                var nodeinfo = new DBusNodeInfo.for_xml((string) xml);
+                var interface_info = nodeinfo.lookup_interface(interface_name);
 
-            ret.append( {v[0], v[1], v[2], new PropertiesRequestHandler(interface_name, interface_info) });
+                ret.append( {v[0], v[1], v[2], new PropertiesRequestHandler(interface_name, interface_info) });
+            } catch (Error e) {
+                stderr.printf(
+                    "Could not load introspection xml for interface %s: %s\n",
+                    interface_name, e.message);
+            }
         }
     }
     return ret;
 }
 
-class Demo.HelloWorld : GLib.Object {
+int main(string[] args) {
+    var context = "";
+    try {
+        context = "opening config file";
+        var config = File.new_for_path("http-dbus-object-mapping.cfg");
+        var config_stream = new DataInputStream (config.read());
+        context = "parsing config file";
+        var cfg = parse_config_file(config_stream);
 
-    public static int main(string[] args) {
-        try {
-            var config = File.new_for_path("http-dbus-object-mapping.cfg");
-            var config_stream = new DataInputStream (config.read());
-            var cfg = parse_config_file(config_stream);
+        var bus = Bus.get_sync(BusType.SESSION);
+        var server = new Soup.Server(Soup.SERVER_PORT, 8088);
 
-            var bus = Bus.get_sync(BusType.SESSION);
-            var server = new Soup.Server(Soup.SERVER_PORT, 8088);
-
-            server.add_handler("/", (server, msg, path, query, client) => {
-                foreach (var i in cfg) {
-                    /* TODO: Add pattern matching */
-                    if (path.has_prefix(i.http_path)) {
-                        i.handler.handle.begin (i, bus, server, msg, path, query, client);
-                        return;
-                    }
+        server.add_handler("/", (server, msg, path, query, client) => {
+            foreach (var i in cfg) {
+                /* TODO: Add pattern matching */
+                if (path.has_prefix(i.http_path)) {
+                    i.handler.handle.begin (i, bus, server, msg, path, query, client);
+                    return;
                 }
-                msg.set_status(404);
-            });
-            server.run();
-            stdout.printf("Hello, World\n");
+            }
+            msg.set_status(404);
+        });
+        server.run();
+        stdout.printf("Hello, World\n");
 
-            return 0;
-        } catch (Error e) {
-            stderr.printf("Oh noes, it went wrong: %s\n", e.message);
-            return 1;
-        }
+        return 0;
+    } catch (Error e) {
+        stderr.printf("Oh noes, it went wrong %s: %s\n", context, e.message);
+        return 1;
     }
 }
 

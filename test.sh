@@ -24,9 +24,13 @@ setup() {
 }
 
 launch_bridge() {
-	export $($srcdir/sd-launch.py --stdout "$scratch_dir/bridge.log" -- $srcdir/http-dbus-bridge.py "$@")
-	echo $LAUNCHED_PID > "$scratch_dir/pids/bridge"
-	address="localhost:$LAUNCHED_PORT"
+	$srcdir/http-dbus-bridge &
+	sleep 1
+	echo $! > "$scratch_dir/pids/bridge"
+	address="localhost:8088"
+#	export $($srcdir/sd-launch.py --stdout "$scratch_dir/bridge.log" -- $srcdir/http-dbus-bridge.py "$@")
+#	echo $LAUNCHED_PID > "$scratch_dir/pids/bridge"
+#	address="localhost:$LAUNCHED_PORT"
 }
 
 teardown() {

@@ -9,7 +9,7 @@ check:
 #http-dbus-bridge : http-dbus-bridge.vala
 #	valac --pkg libsoup-2.4 --pkg json-glib-1.0 --pkg gio-2.0 --enable-checking -o $@ $^
 http-dbus-bridge : http-dbus-bridge.vala
-	CFLAGS="-O3 -DNDEBUG" valac --pkg libsoup-2.4 --pkg json-glib-1.0 --pkg gio-2.0 -o $@ $^
+	CFLAGS="-Os -m32 -DNDEBUG" valac -X -Os -X -m32 -X -DNDEBUG --pkg libsoup-2.4 --pkg json-glib-1.0 --pkg gio-2.0 -o $@ $^
 
 out/http-dbus-bridge.c : http-dbus-bridge.vala
 	mkdir -p out/
